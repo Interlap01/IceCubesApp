@@ -37,6 +37,47 @@ target itself, such as the Settings screens. Package screens cover most of the
 app's UI. Where a package's own initializer is `internal`, prefer the public
 entry point next to it — `StatusRowExternalView` rather than `StatusRowView`.
 
+## Renderers: Cairo vs the Flutter paint host
+
+The engine draws through one of two renderers, and picks with `auto` unless
+told otherwise. Which one ran is in `.mobai/preview.log`:
+
+```
+preview-swiftui: drawing through the Flutter paint host     # the good one
+preview-swiftui: drawing with Cairo (SF Pro not fetched)    # the fallback
+```
+
+**The Flutter paint host needs Apple's SF Pro; without it the engine silently
+falls back to Cairo with Liberation fonts and approximated symbols.** That is
+the only thing gating it — no Flutter SDK, no `flutter` engine from
+`mobai-cloud engines list` (those are preview engines for Flutter *apps*, a
+different thing).
+
+The fonts are Apple-licensed, are not redistributed, and live in the engine
+directory rather than this repo, so each machine fetches them once:
+
+```bash
+cd ~/.mobai/engines/swiftui
+export MOBAI_ACCEPT_APPLE_DESIGN_LICENSES=1   # see the terms note below
+./tool/fetch-sf-pro.sh                        # 207MB, ~550MB temp while unpacking
+./tool/fetch-sf-symbols.sh                    # ~460MB
+./tool/fetch-sf-pro.sh --check                # confirm, fetch nothing
+```
+
+Set `MOBAI_ACCEPT_APPLE_DESIGN_LICENSES=1` only if it is true of you: Apple's
+San Francisco licence limits use to UI mock-ups for software running on Apple
+platforms and requires a registered Apple Developer. See
+<https://developer.apple.com/fonts/> and
+<https://developer.apple.com/sf-symbols/>. Without it everything still works,
+just through Cairo.
+
+On Linux the fetch needs `p7zip-full` and `cpio`; macOS uses its own `hdiutil`.
+
+Restart the preview afterwards — the renderer is chosen at startup, not per
+frame. `mobai-cloud preview run --renderer flutter` does **not** currently
+force it: the flag is not forwarded to the SwiftUI engine, so it starts
+anyway and quietly draws with Cairo. Trust the log line, not the flag.
+
 ## Adapters
 
 `Packages/` depends on libraries that cannot run here — some because they need
@@ -53,7 +94,7 @@ the preview does have:
 | `KeychainSwift.swift` | the iOS keychain | in-memory, shared per process: what is written reads back for one session |
 | `OSLog.swift` | `Logger` | writes to stderr |
 | `UserNotifications.swift` | notification delivery | authorization granted; nothing is delivered |
-| `Nuke.swift` / `NukeUI.swift` | remote image loading | **placeholder** — no image backend, so `LazyImage` draws a neutral fill and hands the app a settled, empty state. Layout is real; pixels are not |
+| `Nuke.swift` / `NukeUI.swift` | remote image loading | **placeholder** — no image backend, so `LazyImage` draws a neutral fill and hands the app a settled, empty state. Layout is real; pixels are not. This is independent of the renderer: avatars stay blank under the Flutter paint host too |
 | `EmojiText.swift` | markdown + custom emoji | markdown is real; `:shortcode:` stays as text |
 | `Gifu.swift` | animated GIFs | a still `UIImageView` |
 | `AVKit.swift`, `CoreHaptics.swift` | playback, haptics | state reads back; nothing plays or vibrates |
