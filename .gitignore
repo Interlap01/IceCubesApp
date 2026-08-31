@@ -93,3 +93,10 @@ IceCubesApp.xcconfig
 *.resolved
 buildServer.json
 /.playwright-mcp
+
+# mobai preview: engine build state, and the per-entry scaffolding the engine
+# regenerates on every run. The hand-written adapters live in .mobai/adapters
+# and are tracked; sync-adapters.sh copies them into whichever entry is in use.
+.mobai/preview.state
+.mobai/preview.log
+**/.mobai/preview/
