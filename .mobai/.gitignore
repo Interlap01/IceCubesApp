@@ -1,0 +1,4 @@
+# Build output and run state: regenerated on every preview run.
+preview/swiftui/generated/
+preview.log
+preview.state
