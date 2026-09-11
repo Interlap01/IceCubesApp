@@ -6,6 +6,31 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 IceCubesApp is a multiplatform Mastodon client built entirely in SwiftUI. It's an open-source native Apple application that runs on iOS, iPadOS, macOS, and visionOS.
 
+## Building & running in a cloud / Linux sandbox (no Xcode)
+
+The `XcodeBuildMCP` commands below assume a local macOS machine with Xcode. In a
+Cloud Agent, Linux, or any sandbox **without an Apple toolchain**, `xcodebuild`
+does not exist and you must NOT try to build the app locally. Instead:
+
+1. **Read the notes first.** Before building or running, read the `mobai-up`
+   helper at `~/.mobai/bin/mobai-up` and the Cursor skills `building-ios-in-cloud`
+   and `using-mobai-cli`. They are the source of truth for this flow.
+2. **Bring mobai up:** run `~/.mobai/bin/mobai-up`. It needs a MobAI account —
+   set the `MOBAI_API_KEY` secret to make this non-interactive; otherwise it
+   prints an email sign-in flow. The Tailscale/physical-iPhone step is optional
+   and never required for simulators or builds.
+3. **Build the real app on a macOS GitHub Actions runner:** `mobai-dev build --ios --json`.
+   The first run may create `.github/workflows/ios-build.yml` (commit & push it,
+   then build again). Unsigned builds run on a simulator; signing needs repo
+   secrets the user configures.
+4. **Run it on an on-demand simulator:** `mobai-dev sim start --duration 30m --json`,
+   then `mobai app install ./build/*.ipa`, `mobai app launch <bundle-id>`, and
+   drive it with the `mobai` CLI (`mobai observe`, `mobai dsl`, ...).
+
+What DOES run locally on Linux (no Xcode needed): SwiftFormat (`.swiftformat`,
+2-space indent) and the translation-validation CI (`SwiftPolyglot`, see
+`.github/workflows/validate_translations.yml`) via a Swift 6.2 Linux toolchain.
+
 ## Build Commands
 
 ### Building for iOS Simulator
