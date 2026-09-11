@@ -93,3 +93,9 @@ IceCubesApp.xcconfig
 *.resolved
 buildServer.json
 /.playwright-mcp
+
+# MobAI preview runtime artifacts
+.mobai/preview.log
+.mobai/*.png
+.mobai/run/
+.mobai/cache/
