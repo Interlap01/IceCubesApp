@@ -1,2 +1,7 @@
-preview.log*
-preview/
+# Everything mobai-dev writes here is machine-local and regenerated:
+# preview/ (staged sources + adapter mocks, with absolute paths baked in),
+# preview.log[.1|.2] (rotated per run), preview.state (live pid/port).
+# Only the project config is worth tracking.
+*
+!.gitignore
+!config.json
