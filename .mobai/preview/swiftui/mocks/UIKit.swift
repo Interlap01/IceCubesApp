@@ -189,3 +189,31 @@ extension UIActivityItemSource {
     @discardableResult
     public func activityViewController(_ value0: UIActivityViewController, thumbnailImageForActivityType value1: UIActivity.ActivityType?, suggestedSize value2: CGSize) -> UIImage? { nil }
 }
+
+
+// mobai-ir-declaration: UIViewControllerTransitionCoordinator
+public protocol UIViewControllerTransitionCoordinator {
+
+}
+
+private final class _MobAIUIViewControllerTransitionCoordinator: UIViewControllerTransitionCoordinator {
+    init() {}
+}
+
+// mobai-ir-declaration: UIViewControllerTransitionCoordinatorContext
+public protocol UIViewControllerTransitionCoordinatorContext {
+
+}
+
+private final class _MobAIUIViewControllerTransitionCoordinatorContext: UIViewControllerTransitionCoordinatorContext {
+    init() {}
+}
+
+
+/// Thrown by everything below.
+///
+/// A stand-in has no behaviour to offer, and throwing is the only
+/// way to satisfy a return type without inventing a value. At a
+/// `try?` call site this becomes nil, so the screen renders empty
+/// rather than wrong, and nothing crashes.
+public enum MockUnavailable: Error { case notImplemented }

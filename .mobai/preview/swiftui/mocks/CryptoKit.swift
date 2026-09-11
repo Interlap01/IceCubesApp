@@ -50,3 +50,36 @@ nonisolated public enum P256 {
     }
   }
 }
+
+
+/// Thrown by everything below.
+///
+/// A stand-in has no behaviour to offer, and throwing is the only
+/// way to satisfy a return type without inventing a value. At a
+/// `try?` call site this becomes nil, so the screen renders empty
+/// rather than wrong, and nothing crashes.
+public enum MockUnavailable: Error { case notImplemented }
+
+
+/// Added because the compiler asked for it by name.
+open class SecRandomCopyBytes: @unchecked Sendable {
+    nonisolated public init() {}
+}
+
+
+/// Added because the compiler asked for it by name.
+nonisolated public func kSecRandomDefault<T>(_ arguments: Any...) throws -> T {
+    throw MockUnavailable.notImplemented
+}
+
+
+// repair:init:SecRandomCopyBytes
+extension SecRandomCopyBytes {
+    /// Added because the app constructs this with arguments.
+    ///
+    /// Takes anything and keeps none of it: a stand-in has
+    /// nowhere to put a value and nothing to do with one.
+    nonisolated public convenience init(_ arguments: Any...) {
+        self.init()
+    }
+}
