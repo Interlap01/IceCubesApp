@@ -99,3 +99,6 @@ buildServer.json
 .mobai/*.png
 .mobai/run/
 .mobai/cache/
+
+# swiftly toolchain pin (local preview sandbox setup)
+.swift-version
