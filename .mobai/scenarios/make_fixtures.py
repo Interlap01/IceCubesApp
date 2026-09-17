@@ -8,8 +8,10 @@ fixture keeps every field Models.Status decodes; only the human-visible parts
 
 import json
 import os
+import struct
 import subprocess
 import sys
+import zlib
 
 HERE = os.path.dirname(os.path.abspath(__file__))
 FIX = os.path.join(HERE, "fixtures")
@@ -75,14 +77,21 @@ POSTS = [
     ),
 ]
 
-AVATAR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240">
+AVATAR_SIZE = 240
+
+# librsvg ignores dominant-baseline and alignment-baseline (verified against
+# 2.58.0: renders with and without them are byte-identical), so `y` is always
+# the text baseline and the monogram cannot be centred declaratively. The
+# baseline is therefore placed by measuring the rendered ink and correcting,
+# which also sidesteps depending on any particular font's cap-height metrics.
+AVATAR_SVG = """<svg xmlns="http://www.w3.org/2000/svg" width="{size}" height="{size}">
   <defs><linearGradient id="g" x1="0" y1="0" x2="0" y2="1">
     <stop offset="0" stop-color="{light}"/><stop offset="1" stop-color="{dark}"/>
   </linearGradient></defs>
-  <rect width="240" height="240" fill="url(#g)"/>
-  <text x="120" y="122" font-family="DejaVu Sans" font-size="104" font-weight="bold"
-        fill="#FFFFFF" fill-opacity="0.92" text-anchor="middle"
-        dominant-baseline="central">{initials}</text>
+  <rect width="{size}" height="{size}" fill="url(#g)"/>
+  <text x="{x:.2f}" y="{y:.2f}" font-family="DejaVu Sans" font-size="104"
+        font-weight="bold" fill="#FFFFFF" fill-opacity="0.92"
+        text-anchor="middle">{initials}</text>
 </svg>
 """
 
@@ -116,6 +125,107 @@ def render(svg_text, out_path, width):
     sys.exit("rsvg-convert failed for %s: %s" % (out_path, proc.stderr.decode()))
 
 
+def read_png(path):
+  """Decode an 8-bit non-interlaced RGB or RGBA PNG.
+
+  rsvg-convert drops the alpha channel when the artwork is fully opaque, so
+  both colour types turn up depending on the SVG.
+  """
+  with open(path, "rb") as fh:
+    data = fh.read()
+  if data[:8] != b"\x89PNG\r\n\x1a\n":
+    sys.exit("%s is not a PNG" % path)
+  pos, idat, hdr = 8, [], None
+  while pos < len(data):
+    length, kind = struct.unpack(">I4s", data[pos:pos + 8])
+    body = data[pos + 8:pos + 8 + length]
+    if kind == b"IHDR":
+      hdr = struct.unpack(">IIBBBBB", body)
+    elif kind == b"IDAT":
+      idat.append(body)
+    elif kind == b"IEND":
+      break
+    pos += 12 + length
+  width, height, depth, colour, _comp, _filt, interlace = hdr
+  channels = {2: 3, 6: 4}.get(colour)
+  if depth != 8 or interlace != 0 or channels is None:
+    sys.exit("%s: expected 8-bit non-interlaced RGB/RGBA, got %r" % (path, hdr))
+  raw = zlib.decompress(b"".join(idat))
+  stride, bpp = width * channels, channels
+  out, prev = bytearray(), bytearray(stride)
+  for y in range(height):
+    start = y * (stride + 1)
+    ftype = raw[start]
+    line = bytearray(raw[start + 1:start + 1 + stride])
+    for i in range(stride):
+      a = line[i - bpp] if i >= bpp else 0
+      b = prev[i]
+      c = prev[i - bpp] if i >= bpp else 0
+      if ftype == 1:
+        line[i] = (line[i] + a) & 0xFF
+      elif ftype == 2:
+        line[i] = (line[i] + b) & 0xFF
+      elif ftype == 3:
+        line[i] = (line[i] + (a + b) // 2) & 0xFF
+      elif ftype == 4:
+        p = a + b - c
+        pa, pb, pc = abs(p - a), abs(p - b), abs(p - c)
+        line[i] = (line[i] + (a if pa <= pb and pa <= pc
+                              else b if pb <= pc else c)) & 0xFF
+      elif ftype != 0:
+        sys.exit("%s: unknown PNG filter %d" % (path, ftype))
+    out += line
+    prev = line
+  return width, height, channels, out
+
+
+def ink_centre(path):
+  """Centre of the near-white glyph ink; the gradient background never is."""
+  width, height, channels, buf = read_png(path)
+  minx, miny, maxx, maxy = width, height, -1, -1
+  for y in range(height):
+    row = y * width * channels
+    for x in range(width):
+      i = row + x * channels
+      if buf[i] > 225 and buf[i + 1] > 225 and buf[i + 2] > 225:
+        minx, maxx = min(minx, x), max(maxx, x)
+        miny, maxy = min(miny, y), max(maxy, y)
+  if maxy < 0:
+    sys.exit("%s: no glyph ink found" % path)
+  return (minx + maxx) / 2.0, (miny + maxy) / 2.0
+
+
+def render_avatar(out_path, initials, light, dark):
+  """Render, measure where the ink landed, then re-render centred on it.
+
+  Centring on the ink rather than on the advance width is what makes a short
+  monogram look centred in a circle; text-anchor alone leaves the side
+  bearings in, which is a few pixels off for letter pairs like "AF".
+  """
+  mid = AVATAR_SIZE / 2.0
+  x, y = mid, mid
+  for _ in range(3):
+    render(AVATAR_SVG.format(size=AVATAR_SIZE, initials=initials, light=light,
+                             dark=dark, x=x, y=y), out_path, AVATAR_SIZE)
+    cx, cy = ink_centre(out_path)
+    dx, dy = mid - cx, mid - cy
+    if abs(dx) < 0.5 and abs(dy) < 0.5:
+      break
+    x, y = x + dx, y + dy
+  return x, y
+
+
+def asset_url(rel_path):
+  """Content-addressed asset URL.
+
+  The image loader caches by URL, so a regenerated avatar served under the
+  same name would keep rendering the old bytes until the cache is cleared.
+  """
+  with open(os.path.join(FIX, rel_path), "rb") as fh:
+    token = "%08x" % (zlib.crc32(fh.read()) & 0xFFFFFFFF)
+  return "%s/%s?v=%s" % (ASSET_BASE, rel_path, token)
+
+
 def build_accounts(template):
   accounts = {}
   for slug, name, initials, light, dark in PEOPLE:
@@ -127,9 +237,9 @@ def build_accounts(template):
     acct["note"] = "<p>Sample account used by the preview fixture.</p>"
     acct["url"] = "https://mastodon.social/@" + slug
     acct["uri"] = "https://mastodon.social/users/" + slug
-    acct["avatar"] = "%s/avatars/%s.png" % (ASSET_BASE, slug)
+    acct["avatar"] = asset_url("avatars/%s.png" % slug)
     acct["avatar_static"] = acct["avatar"]
-    acct["header"] = "%s/avatars/%s.png" % (ASSET_BASE, slug)
+    acct["header"] = acct["avatar"]
     acct["header_static"] = acct["header"]
     acct["bot"] = slug == "weekly"
     acct["locked"] = False
@@ -145,8 +255,10 @@ def build_accounts(template):
 def main():
   os.makedirs(AVATARS, exist_ok=True)
   for slug, _name, initials, light, dark in PEOPLE:
-    render(AVATAR_SVG.format(initials=initials, light=light, dark=dark),
-           os.path.join(AVATARS, slug + ".png"), 240)
+    out = os.path.join(AVATARS, slug + ".png")
+    render_avatar(out, initials, light, dark)
+    cx, cy = ink_centre(out)
+    print("  %-8s ink centre (%.1f, %.1f)" % (slug, cx, cy))
   render(LOAF_SVG, os.path.join(FIX, "loaf.png"), 1200)
 
   real = json.load(open(sys.argv[1]))
@@ -183,11 +295,12 @@ def main():
     s["application"] = None
     s["media_attachments"] = []
     if post["media"]:
+      media = asset_url("%s.png" % post["media"])
       s["media_attachments"] = [{
           "id": "7700%d" % i,
           "type": "image",
-          "url": "%s/%s.png" % (ASSET_BASE, post["media"]),
-          "preview_url": "%s/%s.png" % (ASSET_BASE, post["media"]),
+          "url": media,
+          "preview_url": media,
           "remote_url": None,
           "preview_remote_url": None,
           "text_url": None,
