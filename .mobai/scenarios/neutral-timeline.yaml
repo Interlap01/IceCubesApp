@@ -1,0 +1,13 @@
+# A deterministic trending timeline of invented sample posts, so screenshots of
+# the main screen carry no real person's posts, name or avatar.
+#
+# Avatars and attached images are served over localhost by
+# `python3 -m http.server 8099` in fixtures/, because the image loader does not
+# go through the scenario's route table.
+network:
+  default: passthrough
+  routes:
+    GET /api/v1/trends/statuses: fixtures/trends-statuses.json
+
+appearance:
+  mode: light
